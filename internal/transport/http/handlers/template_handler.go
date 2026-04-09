@@ -83,7 +83,7 @@ func (h *TemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	startDate, err := time.ParseInLocation("2006-01-02", req.StartDate, time.UTC)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -270,4 +270,32 @@ func (h *TemplateHandler) GenerateForTemplate(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusOK, generateTasksResponse{Generated: generated})
+}
+
+// Manual trigger to run full worker logic immediately
+// This is exactly the same logic that runs automatically at midnight
+func (h *TemplateHandler) RunWorkerNow(w http.ResponseWriter, r *http.Request) {
+	processed, err := h.usecase.ProcessRecurringTasks(r.Context())
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]int{
+		"processed_tasks": processed,
+	})
+}
+
+// Force advance ALL recurring tasks to their next date
+// FOR TESTING ONLY! This skips all date checks and always moves tasks forward
+func (h *TemplateHandler) ForceAdvanceAll(w http.ResponseWriter, r *http.Request) {
+	processed, err := h.usecase.ForceAdvanceAllTasks(r.Context())
+	if err != nil {
+		writeUsecaseError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]int{
+		"advanced_tasks": processed,
+	})
 }

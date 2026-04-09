@@ -130,7 +130,7 @@ func validateUpdateInput(input UpdateInput) (UpdateInput, error) {
 // ShouldGenerateForDate checks if a task should be generated for a given date based on recurrence rule
 func ShouldGenerateForDate(template *taskdomain.TaskTemplate, date time.Time) (bool, error) {
 	date = date.Truncate(24 * time.Hour).UTC()
-	startDate := template.StartDate.Truncate(24 * time.Hour).UTC()
+	startDate := template.StartDate.UTC().Truncate(24 * time.Hour)
 
 	// Check if date is before start date
 	if date.Before(startDate) {
@@ -154,8 +154,14 @@ func ShouldGenerateForDate(template *taskdomain.TaskTemplate, date time.Time) (b
 		if params.Interval <= 0 {
 			params.Interval = 1
 		}
-		daysDiff := int(date.Sub(startDate).Hours() / 24)
-		return daysDiff%params.Interval == 0, nil
+		// Calculate days difference by YYYY-MM-DD only, no timezone issues
+		y1, m1, d1 := startDate.Date()
+		y2, m2, d2 := date.Date()
+		date1 := time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)
+		date2 := time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC)
+		daysDiff := int(date2.Sub(date1).Hours() / 24)
+		// If we start at day 0, next date is +interval days
+		return (daysDiff)%params.Interval == 0, nil
 
 	case taskdomain.RecurrenceMonthly:
 		var params taskdomain.MonthlyRecurrence
@@ -178,11 +184,18 @@ func ShouldGenerateForDate(template *taskdomain.TaskTemplate, date time.Time) (b
 		return false, nil
 
 	case taskdomain.RecurrenceSpecificDates:
-		var params taskdomain.SpecificDatesRecurrence
+		var params struct {
+			Dates []string `json:"dates"`
+		}
 		if err := json.Unmarshal(template.RecurrenceParams, &params); err != nil {
 			return false, err
 		}
-		for _, d := range params.Dates {
+
+		for _, dateStr := range params.Dates {
+			d, err := time.ParseInLocation("2006-01-02", dateStr, time.UTC)
+			if err != nil {
+				continue
+			}
 			if d.Truncate(24 * time.Hour).Equal(date) {
 				return true, nil
 			}
@@ -256,7 +269,7 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 	}
 
 	// Generate ONLY THE FIRST upcoming task when template is created
-	firstDate, err := s.FindNextDateForTemplate(ctx, created, s.now())
+	firstDate, err := s.FindNextDateForTemplate(ctx, created, s.now().AddDate(0, 0, -1))
 	if err == nil && !firstDate.IsZero() {
 		task := &taskdomain.Task{
 			Title:         created.Title,
@@ -372,7 +385,7 @@ func (s *Service) ProcessRecurringTasks(ctx context.Context) (int, error) {
 
 			scheduledDate := task.ScheduledDate.Truncate(24 * time.Hour)
 
-			// Only process tasks that are overdue
+			// Only process tasks that are overdue (today or earlier)
 			if scheduledDate.After(today) {
 				continue
 			}
@@ -400,6 +413,85 @@ func (s *Service) ProcessRecurringTasks(ctx context.Context) (int, error) {
 				_, _ = s.repo.Create(ctx, newTask)
 			} else {
 				// Task was NOT completed - MOVE it to next date instead of creating duplicate
+				task.ScheduledDate = &nextDate
+				task.UpdatedAt = s.now()
+				_, _ = s.repo.Update(ctx, task)
+			}
+
+			processed++
+		}
+	}
+
+	return processed, nil
+}
+
+// ForceAdvanceAllTasks - FOR TESTING ONLY!
+// Shifts ALL recurring tasks to their next date, regardless of whether date has passed
+// This is exactly what you need for testing without waiting for midnight
+func (s *Service) ForceAdvanceAllTasks(ctx context.Context) (int, error) {
+	allTasks, err := s.repo.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	processed := 0
+
+	templateTasks := make(map[int64][]*taskdomain.Task)
+	for i := range allTasks {
+		task := &allTasks[i]
+		if task.TemplateID == nil {
+			continue
+		}
+		templateTasks[*task.TemplateID] = append(templateTasks[*task.TemplateID], task)
+	}
+
+	for templateID, tasks := range templateTasks {
+		template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
+		if err != nil {
+			continue
+		}
+
+		for _, task := range tasks {
+			if task.ScheduledDate == nil {
+				continue
+			}
+
+			currentDate := task.ScheduledDate.Truncate(24 * time.Hour)
+
+			// Find next date strictly AFTER current scheduled date
+			// We search from currentDate + 1 day onwards until we find the next match
+			var nextDate time.Time
+			for i := 1; i < 365; i++ {
+				checkDate := currentDate.AddDate(0, 0, i)
+				shouldGenerate, err := ShouldGenerateForDate(template, checkDate)
+				if err == nil && shouldGenerate {
+					nextDate = checkDate
+					break
+				}
+			}
+
+			if nextDate.IsZero() {
+				continue // No more future dates for this template
+			}
+			if err != nil {
+				continue
+			}
+			if nextDate.IsZero() {
+				continue
+			}
+
+			if task.Status == taskdomain.StatusDone {
+				newTask := &taskdomain.Task{
+					Title:         template.Title,
+					Description:   template.Description,
+					Status:        taskdomain.StatusNew,
+					TemplateID:    &template.ID,
+					ScheduledDate: &nextDate,
+					CreatedAt:     s.now(),
+					UpdatedAt:     s.now(),
+				}
+				_, _ = s.repo.Create(ctx, newTask)
+			} else {
 				task.ScheduledDate = &nextDate
 				task.UpdatedAt = s.now()
 				_, _ = s.repo.Update(ctx, task)

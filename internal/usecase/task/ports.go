@@ -43,6 +43,7 @@ type Usecase interface {
 	GenerateTasksForTemplate(ctx context.Context, templateID int64, daysAhead int) (int, error)
 	ProcessRecurringTasks(ctx context.Context) (int, error)
 	FindNextDateForTemplate(ctx context.Context, template *taskdomain.TaskTemplate, from time.Time) (time.Time, error)
+	ForceAdvanceAllTasks(ctx context.Context) (int, error)
 }
 
 type CreateInput struct {

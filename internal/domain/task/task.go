@@ -56,7 +56,7 @@ type MonthlyRecurrence struct {
 }
 
 type SpecificDatesRecurrence struct {
-	Dates []time.Time `json:"dates"`
+	Dates []string `json:"dates"`
 }
 
 type EvenOddRecurrence struct {
