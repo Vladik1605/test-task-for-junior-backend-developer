@@ -37,13 +37,12 @@ func (w *RecurrenceWorker) run(ctx context.Context) {
 			log.Println("Recurrence worker stopped")
 			return
 		default:
-			// Generate tasks for today
-			today := time.Now().UTC().Truncate(24 * time.Hour)
-			generated, err := w.usecase.GenerateTasksForDate(ctx, today)
+			// Process all recurring tasks - core logic: shift dates or create new
+			processed, err := w.usecase.ProcessRecurringTasks(ctx)
 			if err != nil {
-				log.Printf("Error generating tasks for %s: %v", today.Format("2006-01-02"), err)
+				log.Printf("Error processing recurring tasks: %v", err)
 			} else {
-				log.Printf("Generated %d tasks for %s", generated, today.Format("2006-01-02"))
+				log.Printf("Processed %d recurring tasks", processed)
 			}
 
 			// Sleep until next midnight

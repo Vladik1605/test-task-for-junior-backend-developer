@@ -207,6 +207,24 @@ func ShouldGenerateForDate(template *taskdomain.TaskTemplate, date time.Time) (b
 	}
 }
 
+// FindNextDateForTemplate finds the next date starting from `from` when this template should generate a task
+func (s *Service) FindNextDateForTemplate(ctx context.Context, template *taskdomain.TaskTemplate, from time.Time) (time.Time, error) {
+	from = from.Truncate(24 * time.Hour).UTC()
+
+	for i := 0; i < 365; i++ { // Look ahead maximum 1 year
+		date := from.AddDate(0, 0, i)
+		shouldGenerate, err := ShouldGenerateForDate(template, date)
+		if err != nil {
+			return time.Time{}, err
+		}
+		if shouldGenerate {
+			return date, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("no upcoming date found for template in next year")
+}
+
 // CreateTemplate creates a new task template
 func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput) (*taskdomain.TaskTemplate, error) {
 	input.Title = strings.TrimSpace(input.Title)
@@ -237,10 +255,19 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 		return nil, err
 	}
 
-	// Generate tasks for next 30 days when template is created
-	_, err = s.GenerateTasksForTemplate(ctx, created.ID, 30)
-	if err != nil {
-		return nil, err
+	// Generate ONLY THE FIRST upcoming task when template is created
+	firstDate, err := s.FindNextDateForTemplate(ctx, created, s.now())
+	if err == nil && !firstDate.IsZero() {
+		task := &taskdomain.Task{
+			Title:         created.Title,
+			Description:   created.Description,
+			Status:        taskdomain.StatusNew,
+			TemplateID:    &created.ID,
+			ScheduledDate: &firstDate,
+			CreatedAt:     s.now(),
+			UpdatedAt:     s.now(),
+		}
+		_, _ = s.repo.Create(ctx, task)
 	}
 
 	return created, nil
@@ -287,8 +314,8 @@ func (s *Service) UpdateTemplate(ctx context.Context, id int64, input UpdateTemp
 		return nil, err
 	}
 
-	// Regenerate tasks for next 30 days when template is updated
-	_, err = s.GenerateTasksForTemplate(ctx, updated.ID, 30)
+	// When template is updated - regenerate only the single upcoming task
+	_, err = s.GenerateTasksForTemplate(ctx, updated.ID, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -309,100 +336,125 @@ func (s *Service) ListTemplates(ctx context.Context) ([]taskdomain.TaskTemplate,
 	return s.templateRepo.ListTemplates(ctx)
 }
 
-// GenerateTasksForDate generates tasks for all active templates for the given date
-func (s *Service) GenerateTasksForDate(ctx context.Context, date time.Time) (int, error) {
-	date = date.Truncate(24 * time.Hour)
-	templates, err := s.templateRepo.ListActiveTemplatesForDate(ctx, date)
+// ProcessRecurringTasks runs once per midnight, processes all overdue recurring tasks
+// This is the core logic you requested:
+// - If task is DONE: generate new task on next suitable date
+// - If task is NOT DONE: shift its scheduled date to next suitable date
+func (s *Service) ProcessRecurringTasks(ctx context.Context) (int, error) {
+	today := s.now().Truncate(24 * time.Hour)
+	allTasks, err := s.repo.List(ctx)
 	if err != nil {
 		return 0, err
 	}
 
-	generated := 0
-	for _, tpl := range templates {
-		shouldGenerate, err := ShouldGenerateForDate(&tpl, date)
-		if err != nil {
-			continue
-		}
-		if !shouldGenerate {
-			continue
-		}
+	processed := 0
 
-		// Create task
-		task := &taskdomain.Task{
-			Title:         tpl.Title,
-			Description:   tpl.Description,
-			Status:        taskdomain.StatusNew,
-			TemplateID:    &tpl.ID,
-			ScheduledDate: &date,
-			CreatedAt:     s.now(),
-			UpdatedAt:     s.now(),
+	// Group tasks by template ID
+	templateTasks := make(map[int64][]*taskdomain.Task)
+	for i := range allTasks {
+		task := &allTasks[i]
+		if task.TemplateID == nil {
+			continue // Skip non-recurring tasks
 		}
-
-		_, err = s.repo.Create(ctx, task)
-		if err != nil {
-			// Ignore unique constraint violations (task already exists)
-			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-				continue
-			}
-			return generated, err
-		}
-
-		generated++
+		templateTasks[*task.TemplateID] = append(templateTasks[*task.TemplateID], task)
 	}
 
-	return generated, nil
+	for templateID, tasks := range templateTasks {
+		template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
+		if err != nil {
+			continue
+		}
+
+		for _, task := range tasks {
+			if task.ScheduledDate == nil {
+				continue
+			}
+
+			scheduledDate := task.ScheduledDate.Truncate(24 * time.Hour)
+
+			// Only process tasks that are overdue
+			if scheduledDate.After(today) {
+				continue
+			}
+
+			// Find next suitable date starting from tomorrow
+			nextDate, err := s.FindNextDateForTemplate(ctx, template, today.AddDate(0, 0, 1))
+			if err != nil {
+				continue
+			}
+			if nextDate.IsZero() {
+				continue // No more future dates for this template
+			}
+
+			if task.Status == taskdomain.StatusDone {
+				// Task was completed - create NEW task for next date
+				newTask := &taskdomain.Task{
+					Title:         template.Title,
+					Description:   template.Description,
+					Status:        taskdomain.StatusNew,
+					TemplateID:    &template.ID,
+					ScheduledDate: &nextDate,
+					CreatedAt:     s.now(),
+					UpdatedAt:     s.now(),
+				}
+				_, _ = s.repo.Create(ctx, newTask)
+			} else {
+				// Task was NOT completed - MOVE it to next date instead of creating duplicate
+				task.ScheduledDate = &nextDate
+				task.UpdatedAt = s.now()
+				_, _ = s.repo.Update(ctx, task)
+			}
+
+			processed++
+		}
+	}
+
+	return processed, nil
 }
 
-// GenerateTasksForTemplate generates tasks for a specific template for N days ahead
+// GenerateTasksForDate - kept for backward compatibility with API, now uses new logic
+func (s *Service) GenerateTasksForDate(ctx context.Context, date time.Time) (int, error) {
+	return s.ProcessRecurringTasks(ctx)
+}
+
+// GenerateTasksForTemplate - kept for backward compatibility
 func (s *Service) GenerateTasksForTemplate(ctx context.Context, templateID int64, daysAhead int) (int, error) {
 	template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
 	if err != nil {
 		return 0, err
 	}
 
-	now := s.now().Truncate(24 * time.Hour)
-	generated := 0
-
-	for i := 0; i < daysAhead; i++ {
-		date := now.AddDate(0, 0, i)
-		shouldGenerate, err := ShouldGenerateForDate(template, date)
-		if err != nil {
-			continue
-		}
-		if !shouldGenerate {
-			continue
-		}
-
-		task := &taskdomain.Task{
-			Title:         template.Title,
-			Description:   template.Description,
-			Status:        taskdomain.StatusNew,
-			TemplateID:    &template.ID,
-			ScheduledDate: &date,
-			CreatedAt:     s.now(),
-			UpdatedAt:     s.now(),
-		}
-
-		_, err = s.repo.Create(ctx, task)
-		if err != nil {
-			// Ignore unique constraint violations
-			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-				continue
-			}
-			return generated, err
-		}
-
-		generated++
-	}
-
-	// Update last generated date
-	lastDate := now.AddDate(0, 0, daysAhead-1)
-	template.LastGeneratedDate = &lastDate
-	template.UpdatedAt = s.now()
-	_, err = s.templateRepo.UpdateTemplate(ctx, template)
+	// Delete all existing tasks for this template first
+	allTasks, err := s.repo.List(ctx)
 	if err != nil {
-		return generated, err
+		return 0, err
 	}
 
-	return generated, nil
+	for _, task := range allTasks {
+		if task.TemplateID != nil && *task.TemplateID == templateID {
+			_ = s.repo.Delete(ctx, task.ID)
+		}
+	}
+
+	// Create ONLY ONE upcoming task
+	firstDate, err := s.FindNextDateForTemplate(ctx, template, s.now())
+	if err != nil || firstDate.IsZero() {
+		return 0, err
+	}
+
+	task := &taskdomain.Task{
+		Title:         template.Title,
+		Description:   template.Description,
+		Status:        taskdomain.StatusNew,
+		TemplateID:    &template.ID,
+		ScheduledDate: &firstDate,
+		CreatedAt:     s.now(),
+		UpdatedAt:     s.now(),
+	}
+	_, err = s.repo.Create(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+
+	return 1, nil
 }
