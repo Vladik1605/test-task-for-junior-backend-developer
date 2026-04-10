@@ -78,19 +78,16 @@ func TestShouldGenerateForDate(t *testing.T) {
 			StartDate:        startDate,
 		}
 
-		// March 31 should work
 		march31, _ := time.ParseInLocation("2006-01-02", "2026-03-31", time.UTC)
 		result, err := ShouldGenerateForDate(template, march31)
 		assert.NoError(t, err)
 		assert.True(t, result)
 
-		// February 28 (2026 is not a leap year) should work instead of 31
 		feb28, _ := time.ParseInLocation("2006-01-02", "2026-02-28", time.UTC)
 		result, err = ShouldGenerateForDate(template, feb28)
 		assert.NoError(t, err)
 		assert.True(t, result)
 
-		// April 30 should work instead of 31
 		april30, _ := time.ParseInLocation("2006-01-02", "2026-04-30", time.UTC)
 		result, err = ShouldGenerateForDate(template, april30)
 		assert.NoError(t, err)

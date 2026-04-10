@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Task Service API",
-    "version": "1.0.0",
-    "description": "CRUD API for tasks built with clean architecture."
+    "version": "1.1.0",
+    "description": "CRUD API for tasks with recurrence support."
   },
   "servers": [
     {
@@ -13,7 +13,11 @@
   "tags": [
     {
       "name": "Tasks",
-      "description": "Operations with tasks"
+      "description": "Operations with regular tasks"
+    },
+    {
+      "name": "Task Templates",
+      "description": "Operations with recurring task templates"
     }
   ],
   "paths": {
@@ -131,6 +135,229 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/api/v1/task-templates": {
+      "get": {
+        "tags": ["Task Templates"],
+        "summary": "List all recurring task templates",
+        "responses": {
+          "200": {
+            "description": "Task template list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TaskTemplate" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Task Templates"],
+        "summary": "Create recurring task template",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTaskTemplateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created task template",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskTemplate" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/task-templates/{id}": {
+      "get": {
+        "tags": ["Task Templates"],
+        "summary": "Get task template by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task template",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskTemplate" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Task Templates"],
+        "summary": "Update task template",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTaskTemplateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated task template",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskTemplate" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Task Templates"],
+        "summary": "Delete task template",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/task-templates/generate": {
+      "post": {
+        "tags": ["Task Templates"],
+        "summary": "Run worker logic for specific date",
+        "description": "For testing purposes only. Simulates what worker will do on specific date.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GenerateForDateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generation result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GenerateResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/task-templates/{id}/generate": {
+      "post": {
+        "tags": ["Task Templates"],
+        "summary": "Regenerate task for specific template",
+        "description": "For testing purposes only. Recreates current task for template.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GenerateForTemplateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generation result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GenerateResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/task-templates/run-worker": {
+      "post": {
+        "tags": ["Task Templates"],
+        "summary": "Run midnight worker logic now",
+        "description": "For testing purposes only. Runs exactly the same logic as worker runs automatically every midnight.",
+        "responses": {
+          "200": {
+            "description": "Processing result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "processed_tasks": {
+                      "type": "integer",
+                      "example": 5
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/task-templates/force-advance": {
+      "post": {
+        "tags": ["Task Templates"],
+        "summary": "Force advance ALL tasks to next date",
+        "description": "⚠️ FOR TESTING ONLY! Skips all date checks and advances every recurring task to next date according to template rules. Use this only for debugging.",
+        "responses": {
+          "200": {
+            "description": "Advance result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "advanced_tasks": {
+                      "type": "integer",
+                      "example": 5
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -205,6 +432,8 @@
             "enum": ["new", "in_progress", "done"],
             "example": "new"
           },
+          "template_id": { "type": "integer", "format": "int64", "example": 3, "nullable": true },
+          "scheduled_date": { "type": "string", "format": "date", "example": "2026-04-09", "nullable": true },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -214,6 +443,147 @@
             "type": "string",
             "format": "date-time",
             "example": "2026-03-24T00:00:00Z"
+          }
+        }
+      },
+      "CreateTaskTemplateRequest": {
+        "type": "object",
+        "required": ["title", "recurrence_type", "recurrence_params", "start_date"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "Daily patient rounds"
+          },
+          "description": {
+            "type": "string",
+            "example": "Check all patients in the department"
+          },
+          "recurrence_type": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even_odd"],
+            "example": "daily"
+          },
+          "recurrence_params": {
+            "type": "object",
+            "description": "Different schema depending on recurrence_type"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-09"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-12-31",
+            "nullable": true
+          }
+        }
+      },
+      "UpdateTaskTemplateRequest": {
+        "type": "object",
+        "required": ["title", "recurrence_type", "recurrence_params", "start_date"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "Daily patient rounds"
+          },
+          "description": {
+            "type": "string",
+            "example": "Check all patients in the department"
+          },
+          "recurrence_type": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even_odd"],
+            "example": "daily"
+          },
+          "recurrence_params": {
+            "type": "object",
+            "description": "Different schema depending on recurrence_type"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-09"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-12-31",
+            "nullable": true
+          }
+        }
+      },
+      "TaskTemplate": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "example": 1 },
+          "title": { "type": "string", "example": "Daily patient rounds" },
+          "description": {
+            "type": "string",
+            "example": "Check all patients in the department"
+          },
+          "recurrence_type": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even_odd"],
+            "example": "daily"
+          },
+          "recurrence_params": {
+            "type": "object",
+            "description": "Parameters for recurrence rule"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-09"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-12-31",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          }
+        }
+      },
+      "GenerateForDateRequest": {
+        "type": "object",
+        "required": ["date"],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-04-10"
+          }
+        }
+      },
+      "GenerateForTemplateRequest": {
+        "type": "object",
+        "properties": {
+          "days_ahead": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "default": 30,
+            "example": 30
+          }
+        }
+      },
+      "GenerateResponse": {
+        "type": "object",
+        "properties": {
+          "generated": {
+            "type": "integer",
+            "example": 3
           }
         }
       },

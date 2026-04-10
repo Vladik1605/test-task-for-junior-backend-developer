@@ -37,7 +37,6 @@ func (w *RecurrenceWorker) run(ctx context.Context) {
 			log.Println("Recurrence worker stopped")
 			return
 		default:
-			// Process all recurring tasks - core logic: shift dates or create new
 			processed, err := w.usecase.ProcessRecurringTasks(ctx)
 			if err != nil {
 				log.Printf("Error processing recurring tasks: %v", err)
@@ -45,13 +44,11 @@ func (w *RecurrenceWorker) run(ctx context.Context) {
 				log.Printf("Processed %d recurring tasks", processed)
 			}
 
-			// Sleep until next midnight
 			sleepDuration := w.sleepUntilNextMidnight()
 			log.Printf("Recurrence worker sleeping until next midnight (%s)", sleepDuration)
 
 			select {
 			case <-time.After(sleepDuration):
-				// Wake up and run again
 			case <-w.stop:
 				log.Println("Recurrence worker stopped")
 				return

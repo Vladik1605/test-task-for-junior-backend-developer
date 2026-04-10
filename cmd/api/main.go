@@ -44,7 +44,6 @@ func main() {
 	docsHandler := swaggerdocs.NewHandler()
 	router := transporthttp.NewRouter(taskHandler, templateHandler, docsHandler)
 
-	// Start recurrence worker
 	recurrenceWorker := worker.NewRecurrenceWorker(taskUsecase)
 	recurrenceWorker.Start(ctx)
 

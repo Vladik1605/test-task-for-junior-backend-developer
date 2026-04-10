@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// Mock Repository
 type MockTaskRepository struct {
 	mock.Mock
 }
@@ -40,7 +39,6 @@ func (m *MockTaskRepository) List(ctx context.Context) ([]taskdomain.Task, error
 	return args.Get(0).([]taskdomain.Task), args.Error(1)
 }
 
-// Mock Template Repository
 type MockTemplateRepository struct {
 	mock.Mock
 }
@@ -76,7 +74,6 @@ func (m *MockTemplateRepository) ListActiveTemplatesForDate(ctx context.Context,
 }
 
 func TestWorkerLogic_TaskNotCompleted(t *testing.T) {
-	// Arrange
 	mockTaskRepo := new(MockTaskRepository)
 	mockTemplateRepo := new(MockTemplateRepository)
 
@@ -99,7 +96,7 @@ func TestWorkerLogic_TaskNotCompleted(t *testing.T) {
 		ID:            1,
 		TemplateID:    &templateID,
 		ScheduledDate: &scheduledDate,
-		Status:        taskdomain.StatusNew, // Task NOT completed
+		Status:        taskdomain.StatusNew,
 	}
 
 	mockTaskRepo.On("List", mock.Anything).Return([]taskdomain.Task{task}, nil)
@@ -111,10 +108,8 @@ func TestWorkerLogic_TaskNotCompleted(t *testing.T) {
 		return true
 	})).Return(&task, nil)
 
-	// Act
 	processed, err := service.ProcessRecurringTasks(context.Background())
 
-	// Assert
 	assert.NoError(t, err)
 	assert.Equal(t, 1, processed)
 	assert.Equal(t, nextDate.Format("2006-01-02"), updatedTask.ScheduledDate.Format("2006-01-02"))
@@ -124,7 +119,6 @@ func TestWorkerLogic_TaskNotCompleted(t *testing.T) {
 }
 
 func TestWorkerLogic_TaskCompleted(t *testing.T) {
-	// Arrange
 	mockTaskRepo := new(MockTaskRepository)
 	mockTemplateRepo := new(MockTemplateRepository)
 
@@ -149,7 +143,7 @@ func TestWorkerLogic_TaskCompleted(t *testing.T) {
 		ID:            1,
 		TemplateID:    &templateID,
 		ScheduledDate: &scheduledDate,
-		Status:        taskdomain.StatusDone, // Task COMPLETED
+		Status:        taskdomain.StatusDone,
 	}
 
 	mockTaskRepo.On("List", mock.Anything).Return([]taskdomain.Task{task}, nil)
@@ -161,10 +155,8 @@ func TestWorkerLogic_TaskCompleted(t *testing.T) {
 		return true
 	})).Return(&task, nil)
 
-	// Act
 	processed, err := service.ProcessRecurringTasks(context.Background())
 
-	// Assert
 	assert.NoError(t, err)
 	assert.Equal(t, 1, processed)
 	assert.Equal(t, nextDate.Format("2006-01-02"), newTask.ScheduledDate.Format("2006-01-02"))
@@ -175,8 +167,6 @@ func TestWorkerLogic_TaskCompleted(t *testing.T) {
 }
 
 func TestWorker_RunsAtMidnight(t *testing.T) {
-	// This test verifies the worker scheduling logic
-	// The worker sleeps until next midnight, runs once per day
-	imported := true // Worker code was imported correctly
+	imported := true
 	assert.True(t, imported)
 }

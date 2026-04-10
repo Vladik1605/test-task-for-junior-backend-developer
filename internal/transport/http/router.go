@@ -34,7 +34,6 @@ func NewRouter(taskHandler *httphandlers.TaskHandler, templateHandler *httphandl
 
 	// Manual generation endpoints for testing
 	api.HandleFunc("/task-templates/generate", templateHandler.GenerateForDate).Methods(http.MethodPost)
-	api.HandleFunc("/task-templates/{id:[0-9]+}/generate", templateHandler.GenerateForTemplate).Methods(http.MethodPost)
 	api.HandleFunc("/task-templates/run-worker", templateHandler.RunWorkerNow).Methods(http.MethodPost)
 	api.HandleFunc("/task-templates/force-advance", templateHandler.ForceAdvanceAll).Methods(http.MethodPost)
 

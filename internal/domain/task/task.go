@@ -46,7 +46,6 @@ type TaskTemplate struct {
 	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
-// Recurrence parameter types
 type DailyRecurrence struct {
 	Interval int `json:"interval"`
 }
