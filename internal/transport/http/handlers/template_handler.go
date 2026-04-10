@@ -241,33 +241,6 @@ func (h *TemplateHandler) GenerateForDate(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, generateTasksResponse{Generated: generated})
 }
 
-func (h *TemplateHandler) GenerateForTemplate(w http.ResponseWriter, r *http.Request) {
-	id, err := getIDFromRequest(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	type generateTemplateRequest struct {
-		DaysAhead int `json:"days_ahead"`
-	}
-
-	var req generateTemplateRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	// daysAhead parameter is deprecated and ignored, always 1 task is generated
-	generated, err := h.usecase.GenerateTasksForTemplate(r.Context(), id, 0)
-	if err != nil {
-		writeUsecaseError(w, err)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, generateTasksResponse{Generated: generated})
-}
-
 func (h *TemplateHandler) RunWorkerNow(w http.ResponseWriter, r *http.Request) {
 	processed, err := h.usecase.ProcessRecurringTasks(r.Context())
 	if err != nil {

@@ -335,9 +335,30 @@ func (s *Service) UpdateTemplate(ctx context.Context, id int64, input UpdateTemp
 		return nil, err
 	}
 
-	_, err = s.GenerateTasksForTemplate(ctx, updated.ID, 0)
-	if err != nil {
-		return nil, err
+	// When template is updated - regenerate single upcoming task automatically
+	// Delete existing task for this template
+	allTasks, err := s.repo.List(ctx)
+	if err == nil {
+		for _, task := range allTasks {
+			if task.TemplateID != nil && *task.TemplateID == updated.ID {
+				_ = s.repo.Delete(ctx, task.ID)
+			}
+		}
+
+		// Create new task on nearest applicable date
+		firstDate, err := s.FindNextDateForTemplate(ctx, updated, s.now())
+		if err == nil && !firstDate.IsZero() {
+			task := &taskdomain.Task{
+				Title:         updated.Title,
+				Description:   updated.Description,
+				Status:        taskdomain.StatusNew,
+				TemplateID:    &updated.ID,
+				ScheduledDate: &firstDate,
+				CreatedAt:     s.now(),
+				UpdatedAt:     s.now(),
+			}
+			_, _ = s.repo.Create(ctx, task)
+		}
 	}
 
 	return updated, nil
@@ -499,45 +520,6 @@ func (s *Service) ForceAdvanceAllTasks(ctx context.Context) (int, error) {
 	}
 
 	return processed, nil
-}
-
-func (s *Service) GenerateTasksForTemplate(ctx context.Context, templateID int64, daysAhead int) (int, error) {
-	template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
-	if err != nil {
-		return 0, err
-	}
-
-	allTasks, err := s.repo.List(ctx)
-	if err != nil {
-		return 0, err
-	}
-
-	for _, task := range allTasks {
-		if task.TemplateID != nil && *task.TemplateID == templateID {
-			_ = s.repo.Delete(ctx, task.ID)
-		}
-	}
-
-	firstDate, err := s.FindNextDateForTemplate(ctx, template, s.now())
-	if err != nil || firstDate.IsZero() {
-		return 0, err
-	}
-
-	task := &taskdomain.Task{
-		Title:         template.Title,
-		Description:   template.Description,
-		Status:        taskdomain.StatusNew,
-		TemplateID:    &template.ID,
-		ScheduledDate: &firstDate,
-		CreatedAt:     s.now(),
-		UpdatedAt:     s.now(),
-	}
-	_, err = s.repo.Create(ctx, task)
-	if err != nil {
-		return 0, err
-	}
-
-	return 1, nil
 }
 
 // GenerateTasksForDate processes tasks as if it was the specified date

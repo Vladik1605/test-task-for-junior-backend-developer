@@ -276,39 +276,6 @@
         }
       }
     },
-    "/api/v1/task-templates/{id}/generate": {
-      "post": {
-        "tags": ["Task Templates"],
-        "summary": "Regenerate task for specific template",
-        "description": "For testing purposes only. Recreates current task for template.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/GenerateForTemplateRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Generation result",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/GenerateResponse" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/task-templates/run-worker": {
       "post": {
         "tags": ["Task Templates"],
