@@ -136,9 +136,12 @@ func TestShouldGenerateForDate(t *testing.T) {
 	})
 
 	t.Run("specific dates recurrence", func(t *testing.T) {
-		date1, _ := time.ParseInLocation("2006-01-02", "2026-04-15", time.UTC)
-		date2, _ := time.ParseInLocation("2006-01-02", "2026-05-20", time.UTC)
-		params, _ := json.Marshal(taskdomain.SpecificDatesRecurrence{Dates: []time.Time{date1, date2}})
+		date1 := "2026-04-15"
+		date2 := "2026-05-20"
+		params, _ := json.Marshal(taskdomain.SpecificDatesRecurrence{Dates: []string{date1, date2}})
+
+		date1Time, _ := time.ParseInLocation("2006-01-02", date1, time.UTC)
+		date2Time, _ := time.ParseInLocation("2006-01-02", date2, time.UTC)
 
 		template := &taskdomain.TaskTemplate{
 			RecurrenceType:   taskdomain.RecurrenceSpecificDates,
@@ -146,11 +149,11 @@ func TestShouldGenerateForDate(t *testing.T) {
 			StartDate:        startDate,
 		}
 
-		result, err := ShouldGenerateForDate(template, date1)
+		result, err := ShouldGenerateForDate(template, date1Time)
 		assert.NoError(t, err)
 		assert.True(t, result)
 
-		result, err = ShouldGenerateForDate(template, date2)
+		result, err = ShouldGenerateForDate(template, date2Time)
 		assert.NoError(t, err)
 		assert.True(t, result)
 
